@@ -1,3 +1,8 @@
-.env
-output.md
+
+aws_configs/
+aws_dataset.zip
 venv/
+__pycache_
+nohup.out
+checkov_warnings.log
+
