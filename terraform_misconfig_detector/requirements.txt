@@ -1,0 +1,9 @@
+python-hcl2>=4.3.1  # For parsing Terraform files
+checkov>=3.0.0    # For security scanning
+google-cloud-aiplatform>=1.35.0  # For Gemini API access
+networkx>=3.2     # For dependency graph building
+requests>=2.31.0  # HTTP client library
+pydantic>=2.4.2   # Data validation
+typing-extensions>=4.8.0  # Type hinting support
+python-dotenv>=1.0.0  # Environment variable management
+crawl4ai #Web Crawling
