@@ -1,0 +1,7 @@
+torch
+torch_geometric
+numpy
+scikit-learn
+google-generativeai
+python-dotenv
+python-hcl2
