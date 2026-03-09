@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2f4321a2250a1e4e4b034dcdc127a49dac076ee8
 # Python
 venv/
 __pycache__/
@@ -22,3 +26,8 @@ aws_dataset.zip
 nohup.out
 checkov_warnings.log
 
+<<<<<<< HEAD
+=======
+
+inference/.env
+>>>>>>> 2f4321a2250a1e4e4b034dcdc127a49dac076ee8
