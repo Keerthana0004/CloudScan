@@ -1,33 +1,36 @@
 """
 LLM Remediation Module
-Calls the Gemini API to generate remediation advice for flagged Terraform resources.
+Calls the OpenRouter API to generate remediation advice for flagged Terraform resources.
 """
 
 import os
 import json
-import google.generativeai as genai
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Gemini API Setup ──────────────────────────────────────────────────────────
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
+# ── OpenRouter API Setup ─────────────────────────────────────────────────────
+OPENROUTER_API_KEY = os.getenv("OPEN_ROUTER_KEY")
+if not OPENROUTER_API_KEY:
     raise ValueError(
-        "⚠️  Missing GEMINI_API_KEY. "
+        "⚠️  Missing OPEN_ROUTER_KEY. "
         "Create a .env file in the project root with:\n"
-        "  GEMINI_API_KEY=your_key_here"
+        "  OPEN_ROUTER_KEY=your_key_here"
     )
 
-genai.configure(api_key=api_key)
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Risk-level labels used in the prompt
 RISK_LABELS = {0: "Safe", 1: "Low", 2: "Medium", 3: "High/Critical"}
 
-# ── If you have a finetuned model, put its ID here ────────────────────────────
-# Example: "tunedModels/terraform-remediation-abc123"
-# Set to None to use the base Gemini model
-FINETUNED_MODEL_ID = os.getenv("GEMINI_FINETUNED_MODEL", None)
+# ── Model selection ───────────────────────────────────────────────────────────
+# Default model on OpenRouter (Google Gemini 2.0 Flash via OpenRouter)
+# You can change this to any model available on OpenRouter, e.g.:
+#   "google/gemini-2.0-flash-001"
+#   "anthropic/claude-3.5-sonnet"
+#   "meta-llama/llama-3-70b-instruct"
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
 
 
 def _build_prompt(flagged_resources, terraform_source=None):
@@ -98,13 +101,47 @@ def generate_remediation(flagged_resources, terraform_source=None):
 
     prompt = _build_prompt(flagged_resources, terraform_source)
 
-    # Use finetuned model if available, otherwise fall back to base
-    model_name = FINETUNED_MODEL_ID if FINETUNED_MODEL_ID else "gemini-2.0-flash"
-    
-    print(f"🤖 Calling Gemini ({model_name}) for remediation...")
-    model = genai.GenerativeModel(model_name)
-    response = model.generate_content(prompt)
-    return response.text
+    model_name = DEFAULT_MODEL
+    print(f"🤖 Calling OpenRouter ({model_name}) for remediation...")
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/CloudScan",   # Optional: for OpenRouter analytics
+        "X-Title": "CloudScan Remediation",                # Optional: app name in OpenRouter dashboard
+    }
+
+    payload = {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an expert AWS cloud security engineer specializing in Terraform Infrastructure-as-Code.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+    }
+
+    response = requests.post(OPENROUTER_BASE_URL, headers=headers, json=payload)
+
+    if response.status_code != 200:
+        error_detail = response.text
+        raise RuntimeError(
+            f"❌ OpenRouter API error (HTTP {response.status_code}): {error_detail}"
+        )
+
+    data = response.json()
+
+    # Extract the assistant's reply
+    try:
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(
+            f"❌ Unexpected API response format: {e}\nFull response: {json.dumps(data, indent=2)}"
+        )
 
 
 # ── Standalone test ───────────────────────────────────────────────────────────
