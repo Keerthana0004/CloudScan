@@ -28,4 +28,4 @@ nohup.out
 checkov_warnings.log
 
 
-.env
+inference/.env
