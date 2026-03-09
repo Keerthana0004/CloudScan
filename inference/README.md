@@ -41,3 +41,15 @@ By default, the script will automatically look for the dataset in `c:\dataset_ri
 ```bash
 python inference\run_model.py --model "path/to/your/model.pth" --dataset "path/to/dataset"
 ```
+
+### Run in Windows
+
+while using powershell
+```bash
+python inference\run_model.py --dataset ${PWD}
+```
+
+while using powershell
+```bash
+python inference\run_model.py --dataset %CD%
+``` 
