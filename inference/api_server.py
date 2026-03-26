@@ -40,16 +40,18 @@ def scan():
     tf_files = [f for f in uploaded_files if f.filename.endswith(".tf")]
 
     if not tf_files:
+        # At least one .tf file is required for scanning
         return jsonify({"error": "No .tf files found in the upload."}), 400
 
     # Parse query params
     threshold = request.args.get("threshold", 1, type=int)
     enable_remediation = request.args.get("remediation", "true").lower() != "false"
 
-    # Save uploaded files to a temp directory
+    # Save ALL uploaded files to a temp directory
+    # (so the LLM can see the full project context: .tf, .tfvars, README, etc.)
     tmp_dir = tempfile.mkdtemp(prefix="cloudscan_")
     try:
-        for f in tf_files:
+        for f in uploaded_files:
             # Preserve subdirectory structure if the browser sends relative paths
             # (e.g., webkitdirectory uploads send "subfolder/file.tf")
             rel_path = f.filename.replace("\\", "/")
@@ -57,13 +59,7 @@ def scan():
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             f.save(dest_path)
 
-        # Also save any checkov_report.json if uploaded
-        for f in uploaded_files:
-            if f.filename.endswith("checkov_report.json"):
-                dest = os.path.join(tmp_dir, os.path.basename(f.filename))
-                f.save(dest)
-
-        # Count what we received
+        # Count .tf files we received (still the primary scan target)
         saved_count = sum(
             1 for root, _, files in os.walk(tmp_dir)
             for fname in files if fname.endswith(".tf")
