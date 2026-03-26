@@ -109,7 +109,7 @@ def run_dynamic_inference(
         - all_predictions: [{node_id, resource_type, predicted_risk, risk_label}]
         - flagged_resources: [{node_id, resource_type, predicted_risk, risk_label, config}]
         - remediation: str or None
-        - terraform_source: str (concatenated .tf content)
+        - terraform_source: str (concatenated project content)
     """
     model_path = model_path or DEFAULT_MODEL_PATH
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -177,15 +177,15 @@ def run_dynamic_inference(
             }
             flagged.append(entry_flagged)
 
-    # 7. Read Terraform source for LLM context
-    tf_source = _read_tf_source(tf_folder_path)
+    # 7. Read full project source for LLM context (all files, not just .tf)
+    project_source = _read_project_source(tf_folder_path)
 
-    # 8. LLM remediation (optional)
+    # 8. LLM remediation (runs even with no flagged resources for proactive review)
     remediation_text = None
-    if enable_remediation and flagged:
+    if enable_remediation:
         try:
             from llm_remediation import generate_remediation
-            remediation_text = generate_remediation(flagged, terraform_source=tf_source)
+            remediation_text = generate_remediation(flagged, terraform_source=project_source)
         except Exception as e:
             remediation_text = f"LLM remediation failed: {e}"
 
@@ -198,23 +198,59 @@ def run_dynamic_inference(
         "all_predictions": all_predictions,
         "flagged_resources": flagged,
         "remediation": remediation_text,
-        "terraform_source": tf_source,
+        "terraform_source": project_source,
     }
 
 
-def _read_tf_source(folder_path):
-    """Read and concatenate all .tf files for LLM context."""
-    tf_parts = []
-    for root, _, files in os.walk(folder_path):
+# File extensions to include when reading the full project for LLM context
+_PROJECT_EXTENSIONS = {
+    ".tf", ".tfvars", ".hcl",          # Terraform / HCL
+    ".json", ".yaml", ".yml",          # Config / data files
+    ".md", ".txt",                      # Documentation
+    ".sh", ".bash",                     # Shell scripts
+    ".py",                              # Python helpers
+    ".auto.tfvars",                     # Auto-loaded tfvars
+}
+
+# Max size per file (skip very large files to avoid token bloat)
+_MAX_FILE_SIZE = 50_000  # 50 KB
+
+
+def _read_project_source(folder_path):
+    """
+    Read and concatenate ALL relevant project files for full LLM context.
+    Includes .tf, .tfvars, .json, .yaml, .yml, .md, .hcl, .sh, etc.
+    Skips binary files and very large files.
+    """
+    parts = []
+    for root, dirs, files in os.walk(folder_path):
+        # Skip hidden directories and common non-project dirs
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in {
+            "node_modules", "__pycache__", ".terraform", ".git", "venv"
+        }]
         for file in sorted(files):
-            if file.endswith(".tf"):
-                full_path = os.path.join(root, file)
-                try:
-                    with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
-                        tf_parts.append(f"# ── {file} ──\n{f.read()}")
-                except:
-                    pass
-    return "\n\n".join(tf_parts) if tf_parts else None
+            _, ext = os.path.splitext(file)
+            if ext.lower() not in _PROJECT_EXTENSIONS:
+                continue
+
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, folder_path)
+
+            # Skip files that are too large
+            try:
+                if os.path.getsize(full_path) > _MAX_FILE_SIZE:
+                    parts.append(f"# ── {rel_path} ── (skipped: file too large)")
+                    continue
+            except OSError:
+                continue
+
+            try:
+                with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                parts.append(f"# ── {rel_path} ──\n{content}")
+            except Exception:
+                pass
+    return "\n\n".join(parts) if parts else None
 
 
 # ── CLI for standalone testing ────────────────────────────────────────────────

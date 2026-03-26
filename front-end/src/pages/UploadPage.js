@@ -19,10 +19,8 @@ export default function UploadPage() {
     const selectedFiles = Array.from(e.target.files);
     if (!selectedFiles.length) return;
 
+    // We strictly require at least one .tf file for scanning
     const tfFiles = selectedFiles.filter((f) => f.name.endsWith(".tf"));
-    const otherAllowed = selectedFiles.filter(
-      (f) => f.name.endsWith(".json") || f.name.endsWith(".tf")
-    );
 
     if (tfFiles.length === 0) {
       setError(true);
@@ -31,9 +29,14 @@ export default function UploadPage() {
       return;
     }
 
-    setFiles(otherAllowed);
+    // For folder uploads, send ALL files so the LLM gets full project context.
+    // For individual file uploads, only .tf files are selected (via accept attr).
+    const isFolder = selectedFiles.some((f) => f.webkitRelativePath);
+    const filesToUpload = isFolder ? selectedFiles : tfFiles;
+
+    setFiles(filesToUpload);
     setError(false);
-    setToast("success");
+    setToast(null); // Reset toast when new files are selected
     setResults(null);
   };
 
@@ -50,7 +53,7 @@ export default function UploadPage() {
     try {
       const formData = new FormData();
       files.forEach((file) => {
-        // Use webkitRelativePath if available (folder upload), otherwise just filename
+        // Use webkitRelativePath for folder structure preservation on backend
         const path = file.webkitRelativePath || file.name;
         formData.append("files", file, path);
       });
@@ -60,14 +63,17 @@ export default function UploadPage() {
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
-          timeout: 120000, // 2 min timeout for LLM calls
+          timeout: 180000, // 3 min timeout for larger projects/LLM
         }
       );
 
       setResults(response.data);
       setToast("success");
+      setError(false);
     } catch (err) {
       console.error("Scan failed:", err);
+      // Better error message if API is down
+      const errorMessage = err.response?.data?.error || "Scan failed. Is the API server running?";
       setError(true);
       setToast("error");
     } finally {
@@ -121,7 +127,7 @@ export default function UploadPage() {
                   type="file"
                   className="hidden"
                   multiple
-                  accept=".tf,.json"
+                  accept=".tf"
                   onChange={handleFileChange}
                 />
               </label>
@@ -140,11 +146,11 @@ export default function UploadPage() {
                 </p>
                 <input
                   id="folderUpload"
-                  ref={folderInputRef}
                   type="file"
                   className="hidden"
                   onChange={handleFileChange}
-                  {...{ webkitdirectory: "", directory: "" }}
+                  webkitdirectory=""
+                  directory=""
                 />
               </label>
             </div>
@@ -155,7 +161,7 @@ export default function UploadPage() {
                 <p className="text-sm font-medium text-indigo-700 mb-2">
                   📁 {files.length} file{files.length > 1 ? "s" : ""} selected
                 </p>
-                <div className="max-h-32 overflow-y-auto space-y-1">
+                <div className="max-h-32 overflow-y-auto space-y-1 text-left">
                   {files.map((f, i) => (
                     <p key={i} className="text-xs text-gray-600 font-mono">
                       {f.webkitRelativePath || f.name}
@@ -164,7 +170,12 @@ export default function UploadPage() {
                 </div>
               </div>
             )}
-            {error && <FilePreviewError />}
+            {error && (
+              <FilePreviewError 
+                name="Unsupported Selection" 
+                reason="Please select at least one .tf file to proceed."
+              />
+            )}
 
             {/* Options */}
             <div className="flex items-center gap-3 mb-6">

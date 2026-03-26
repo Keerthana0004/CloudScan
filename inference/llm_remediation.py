@@ -12,14 +12,8 @@ load_dotenv()
 
 # ── OpenRouter API Setup ─────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPEN_ROUTER_KEY")
-if not OPENROUTER_API_KEY:
-    raise ValueError(
-        "⚠️  Missing OPEN_ROUTER_KEY. "
-        "Create a .env file in the project root with:\n"
-        "  OPEN_ROUTER_KEY=your_key_here"
-    )
-
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 
 # Risk-level labels used in the prompt
 RISK_LABELS = {0: "Safe", 1: "Low", 2: "Medium", 3: "High/Critical"}
@@ -55,23 +49,38 @@ def _build_prompt(flagged_resources, terraform_source=None):
     source_section = ""
     if terraform_source:
         source_section = (
-            "\n\n## Original Terraform Source\n"
-            f"```hcl\n{terraform_source}\n```"
+            "\n\n## Full Project Source\n"
+            "Below is the complete project folder contents (Terraform files, variables, "
+            "configs, documentation, etc.) for full context:\n"
+            f"```\n{terraform_source}\n```"
         )
 
-    prompt = f"""You are an expert AWS cloud security engineer specializing in Terraform Infrastructure-as-Code.
+    if flagged_resources:
+        prompt = f"""You are an expert AWS cloud security engineer specializing in Terraform Infrastructure-as-Code.
 
 An AI model (RGCN graph neural network) has analyzed a Terraform configuration and flagged the following resources as potentially misconfigured or insecure.
-
-For EACH flagged resource below:
-1. Explain what the security risk or misconfiguration is.
-2. Explain the potential impact if left unaddressed.
-3. Provide the corrected Terraform code block as a remediation.
 
 {flagged_section}
 {source_section}
 
-Please provide your remediation in clear, structured format with corrected Terraform HCL code blocks."""
+For EACH flagged resource, provide:
+1. **Issue** — A brief, simple explanation of the security risk or misconfiguration.
+2. **Impact** — What could happen if this is left unaddressed.
+3. **Remediation** — The corrected Terraform HCL code block that fixes the issue.
+
+Keep explanations concise and easy to understand."""
+    else:
+        prompt = f"""You are an expert AWS cloud security engineer specializing in Terraform Infrastructure-as-Code.
+
+An AI model (RGCN graph neural network) has analyzed a Terraform configuration and found no flagged resources. Please review the full project source below for any security issues or best practice improvements.
+{source_section}
+
+For EACH issue you find, provide:
+1. **Issue** — A brief, simple explanation of the security risk or misconfiguration.
+2. **Impact** — What could happen if this is left unaddressed.
+3. **Remediation** — The corrected Terraform HCL code block that fixes the issue.
+
+If the configuration is already secure, confirm that and suggest any optional hardening improvements. Keep explanations concise and easy to understand."""
 
     return prompt
 
@@ -96,8 +105,8 @@ def generate_remediation(flagged_resources, terraform_source=None):
     str
         The LLM-generated remediation text.
     """
-    if not flagged_resources:
-        return "✅ No resources were flagged — no remediation needed."
+    if not OPENROUTER_API_KEY:
+        return "⚠️  LLM remediation skipped: Missing OPEN_ROUTER_KEY in .env"
 
     prompt = _build_prompt(flagged_resources, terraform_source)
 
