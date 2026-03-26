@@ -63,10 +63,12 @@ An AI model (RGCN graph neural network) has analyzed a Terraform configuration a
 {flagged_section}
 {source_section}
 
-For EACH flagged resource, provide:
+First, for EACH flagged resource above, provide:
 1. **Issue** — A brief, simple explanation of the security risk or misconfiguration.
 2. **Impact** — What could happen if this is left unaddressed.
 3. **Remediation** — The corrected Terraform HCL code block that fixes the issue.
+
+Then, go beyond the flagged resources and analyze ALL the project files above for any additional security issues, misconfigurations, or best practice violations that the AI model may have missed. For each additional issue found, provide the same format (Issue, Impact, Remediation).
 
 Keep explanations concise and easy to understand."""
     else:
